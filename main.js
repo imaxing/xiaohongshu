@@ -14,7 +14,11 @@ const events = {
   moveMouse: (d) => robot.moveMouse(d),
   scrollMouse: (d) => robot.scrollMouse(d),
   clickMouse: (d) => robot.clickMouse(d),
-  report: (d) => (results[d.index] = d.value)
+  report: (d) => {
+    results[d.index] = d.value
+    console.log('results:')
+    console.log(results)
+  }
 };
 
 function createWindow() {
@@ -44,6 +48,26 @@ function createWindow() {
     events[type] && events[type](data);
   });
 
+
+  // 获取初始窗口位置
+  const [x, y] = mainWindow.getPosition();
+  const [width, height] = mainWindow.getSize();
+  mainWindow.webContents.send('window-info', {x, y, width, height});
+
+  // 监听窗口移动事件
+  mainWindow.on('move', () => {
+    const [x, y] = mainWindow.getPosition();
+    const [width, height] = mainWindow.getSize();
+    mainWindow.webContents.send('window-info', {x, y, width, height});
+  });
+
+  // 监听窗口大小变化事件
+  mainWindow.on('resize', () => {
+    const [x, y] = mainWindow.getPosition();
+    const [width, height] = mainWindow.getSize();
+    mainWindow.webContents.send('window-info', {x, y, width, height});
+  });
+
 }
 
 app.whenReady().then(() => {
@@ -56,3 +80,5 @@ app.whenReady().then(() => {
 app.on("window-all-closed", function () {
   if (process.platform !== "darwin") app.quit();
 });
+
+
