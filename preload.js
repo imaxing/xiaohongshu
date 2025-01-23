@@ -47,7 +47,7 @@ function $(selector) {
 }
 
 // 创建覆盖的样式
-function createSectionIndex() {
+function createResetStyles() {
   const style = document.createElement('style');
   style.textContent = `
     #exploreFeeds > section::after {
@@ -66,11 +66,18 @@ function createSectionIndex() {
       color: #fff;
     }
 
-    #noteContainer {
+    #noteContainer, .note-detail-mask {
       transition: none !important;
     }
+
+    
     
   `;
+  /*
+  .note-detail-mask {
+      pointer-events: none;
+    }
+  */
   document.head.appendChild(style);
 }
 
@@ -92,7 +99,7 @@ function createCoverCenterInfo(position) {
   span.style.background = '#f40f40'
   span.style.color = '#fff'
   span.style.borderRadius = 4
-  span.style.zIndex = 1000000;
+  span.style.zIndex = 100;
   return span
 }
 
@@ -194,7 +201,7 @@ function getSectionInfo() {
           desc: desc.innerText,
           covers: Array.from(medias).map(d => d.getAttribute('src')).filter(Boolean)
         })
-      }, 2000)
+      }, 1000)
 
     } catch (error) {
       console.log(error)
@@ -207,6 +214,8 @@ function getSectionInfo() {
 async function runSectionAction(section) {
   try {
 
+    alert('' + section)
+
     const position = getElementPosition(`#exploreFeeds > section[data-index="${section}"] a.cover`)
 
     position.x += state.window.x
@@ -214,30 +223,28 @@ async function runSectionAction(section) {
 
     send({ type: "moveMouse", data: { targetX: position.x, targetY: position.y, duration: 100 } })
     await new Promise(resolve => setTimeout(resolve, 100))
-    console.log('1. 移动到当前元素上')
+    alert('1. 移动到当前元素上')
 
 
     send({ type: "clickMouse", data: { button: 'left', duration: 100 } })
-    await new Promise(resolve => setTimeout(resolve, 2100))
-    console.log('2. 点击打开元素')
+    await new Promise(resolve => setTimeout(resolve, 100))
+    alert('2. 点击打开元素')
 
 
 
     const info = await getSectionInfo(section)
-    console.log('3. 获取打开的信息', info)
+    alert('3. 获取打开的信息', info)
 
 
     send({ type: "report", data: { index: section, value: info } })
-    console.log('4. 上报成功, 准备关闭')
+    alert('4. 上报成功, 准备关闭')
 
 
-
-    await new Promise(resolve => setTimeout(resolve, 1500))
     send({ type: "moveMouse", data: { targetX: state.window.x + 10, targetY: window.innerHeight / 2, duration: 100 } })
     send({ type: "clickMouse", data: { button: 'left', duration: 100 } })
     // send({ type: "keyTap", data: 'escape' })
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    console.log('5. 已关闭弹窗')
+    await new Promise(resolve => setTimeout(resolve, 200))
+    alert('5. 已关闭弹窗')
 
 
   } catch (error) {
@@ -259,7 +266,7 @@ async function start() {
     // 滚动后会重新获取所有的卡片, 如果是处理过的直接跳过
     if (state.checked.includes(index)) {
       console.log('处理过了')
-      // continue
+      continue
     }
 
 
@@ -283,39 +290,36 @@ async function start() {
 
 
 /*
-v1
-加载小红书网页版
-robotjs自动化一个一个的点进去, 抓标题, 描述, tag
-不能dom click
-加按钮触发
+  v1
+  加载小红书网页版
+  robotjs自动化一个一个的点进去, 抓标题, 描述, tag
+  不能dom click
+  加按钮触发
 
 
-v2
-加手动暂停
-用户移动鼠标取消自动化
-x,y要加上窗口位置判断
-鼠标速度移动快一些
-图片也要抓一下
+  v2
+  加手动暂停
+  用户移动鼠标取消自动化
+  x,y要加上窗口位置判断
+  鼠标速度移动快一些
+  图片也要抓一下
 
-v3
-增加全屏蒙层提示任务状态
-拦截请求
+  v3
+  增加全屏蒙层提示任务状态
+  拦截请求
 */
 window.addEventListener('load', () => {
 
 
+  // 按钮触发任务
   state.start_button = createFloatingButton({ text: '开始', left: '100px' });
   state.start_button.addEventListener('click', () => {
-
     state.stoped = !state.stoped
-
   });
 
 
-
-  createSectionIndex();
-
-
+  // 创建部分自定义样式
+  createResetStyles();
 
 
   // 监听任务状态
@@ -334,8 +338,6 @@ window.addEventListener('load', () => {
   watch(state, 'window', () => {
     state.sections = getSections();
   })
-
-
 
 
 
