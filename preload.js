@@ -214,7 +214,7 @@ function getSectionInfo() {
 async function runSectionAction(section) {
   try {
 
-    alert('' + section)
+    console.log('' + section)
 
     const position = getElementPosition(`#exploreFeeds > section[data-index="${section}"] a.cover`)
 
@@ -223,28 +223,28 @@ async function runSectionAction(section) {
 
     send({ type: "moveMouse", data: { targetX: position.x, targetY: position.y, duration: 100 } })
     await new Promise(resolve => setTimeout(resolve, 100))
-    alert('1. 移动到当前元素上')
+    console.log('1. 移动到当前元素上')
 
 
     send({ type: "clickMouse", data: { button: 'left', duration: 100 } })
     await new Promise(resolve => setTimeout(resolve, 100))
-    alert('2. 点击打开元素')
+    console.log('2. 点击打开元素')
 
 
 
     const info = await getSectionInfo(section)
-    alert('3. 获取打开的信息', info)
+    console.log('3. 获取打开的信息', info)
 
 
     send({ type: "report", data: { index: section, value: info } })
-    alert('4. 上报成功, 准备关闭')
+    console.log('4. 上报成功, 准备关闭')
 
 
     send({ type: "moveMouse", data: { targetX: state.window.x + 10, targetY: window.innerHeight / 2, duration: 100 } })
     send({ type: "clickMouse", data: { button: 'left', duration: 100 } })
     // send({ type: "keyTap", data: 'escape' })
     await new Promise(resolve => setTimeout(resolve, 200))
-    alert('5. 已关闭弹窗')
+    console.log('5. 已关闭弹窗')
 
 
   } catch (error) {
