@@ -179,6 +179,7 @@ function createFloatingButton(options) {
   return button
 }
 
+// 创建任务状态提示蒙层
 function createTaskStatusMask() {
   const mask = document.createElement('div');
   mask.style.cssText = `
@@ -269,7 +270,7 @@ async function runSectionAction(section) {
 
     send({ type: "keyTap", data: 'escape' })
 
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise(resolve => setTimeout(resolve, 2000))
 
 
   } catch (error) {
@@ -282,7 +283,10 @@ async function runSectionAction(section) {
 async function start() {
   state.sections = getSections();
 
-  // state.sections = {1: state.sections[1]}
+  state.sections = {
+    0: state.sections[0],
+    1: state.sections[1],
+  }
 
   for (const index in state.sections) {
 
@@ -371,7 +375,7 @@ window.addEventListener('load', () => {
 
 // 监听任务状态
 watch(state, 'stoped', (v) => {
-  state.start_button.innerText = v ? '开始' : '暂停'
+  state.start_button.innerText = v ? '开始' : '停止'
   if (!v) {
     start();
     state.mask = createTaskStatusMask();
