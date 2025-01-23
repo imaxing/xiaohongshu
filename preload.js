@@ -1,11 +1,13 @@
 const { ipcRenderer } = require("electron");
 
 const state = {
-  sections: [], // 所有卡片数据
+  sections: {}, // 所有卡片数据
+  nextSections: {},
   checked: [], // 处理过的卡片 data-index
   stoped: true, // 是否停止状态
   mask: null, // 全屏的提示蒙层
   start_button: null,
+  toasts: [],
   window: { x: 0, y: 0, width: 0, height: 0 } // 应用窗口信息
 }
 
@@ -46,6 +48,57 @@ function $(selector) {
   return document.querySelector(selector)
 }
 
+// 创建提示信息
+function createToast({ text = '', duration = 3000 } = {}) {
+  // 维护当前显示的toast数组
+  if (!state.toasts) {
+    state.toasts = [];
+  }
+
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translate(-50%, ${state.toasts.length * 40}px);
+    padding: 8px 16px;
+    background: #E6994B;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.5;
+    z-index: 99999999;
+    transition: all 0.3s;
+    box-shadow: 0 3px 6px -4px rgba(0, 0, 0, 0.12), 
+                0 6px 16px 0 rgba(0, 0, 0, 0.08),
+                0 9px 28px 8px rgba(0, 0, 0, 0.05);
+  `;
+  toast.textContent = text;
+  document.body.appendChild(toast);
+
+  // 添加到数组
+  state.toasts.push(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => {
+      document.body.removeChild(toast);
+      // 从数组中移除
+      const index = state.toasts.indexOf(toast);
+      if (index > -1) {
+        state.toasts.splice(index, 1);
+      }
+      // 更新剩余toast的位置
+      state.toasts.forEach((t, i) => {
+        t.style.transform = `translate(-50%, ${i * 40}px)`;
+      });
+    }, 300);
+  }, duration);
+
+  return toast;
+}
+
+
 // 创建覆盖的样式
 function createResetStyles() {
   const style = document.createElement('style');
@@ -85,23 +138,11 @@ function createResetStyles() {
 function getSections() {
   const data = document.querySelectorAll("#exploreFeeds > section");
   return Array.from(data).reduce(
-    (sum, section) => [...sum, section.getAttribute('data-index')],
-    []
+    (sum, section) => ({ ...sum, [section.getAttribute('data-index')]: section }),
+    {}
   );
 }
 
-// 在卡片封面上创建一个位置标记测试鼠标移动的坐标准不准
-function createCoverCenterInfo(position) {
-  const span = document.createElement('span')
-  span.style.position = 'fixed',
-    span.style.left = position.x + 'px'
-  span.style.top = position.y + 'px'
-  span.style.background = '#f40f40'
-  span.style.color = '#fff'
-  span.style.borderRadius = 4
-  span.style.zIndex = 100;
-  return span
-}
 
 // 获取指定section的位置
 function getElementPosition(selector) {
@@ -112,11 +153,6 @@ function getElementPosition(selector) {
   const rect = section.getBoundingClientRect();
   const x = rect.left + (rect.width / 2)
   const y = rect.top + (rect.height / 2)
-
-  const point = createCoverCenterInfo({ x, y })
-  point.innerText = `${x}/${y}`
-  point.style.transform = 'translate(-50%, -50%)'
-  document.body.appendChild(point)
 
   return { x, y };
 }
@@ -181,12 +217,6 @@ function isElementFullyVisible(el) {
 
 }
 
-// 解析内容的图片信息
-function getBackgroundUrl(dom) {
-  const background = dom.style.background;
-  const urlMatch = background.match(/url\((['"]?)(.*?)\1\)/);
-  return urlMatch ? urlMatch[2] : null;
-}
 
 // 获取打开后的信息内容
 function getSectionInfo() {
@@ -214,12 +244,10 @@ function getSectionInfo() {
 async function runSectionAction(section) {
   try {
 
-    console.log('' + section)
-
     const position = getElementPosition(`#exploreFeeds > section[data-index="${section}"] a.cover`)
 
     position.x += state.window.x
-    position.y -= state.window.y
+    position.y += state.window.y
 
     send({ type: "moveMouse", data: { targetX: position.x, targetY: position.y, duration: 100 } })
     await new Promise(resolve => setTimeout(resolve, 100))
@@ -227,24 +255,21 @@ async function runSectionAction(section) {
 
 
     send({ type: "clickMouse", data: { button: 'left', duration: 100 } })
-    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // 等待弹窗打开接口数据获取
+    await new Promise(resolve => setTimeout(resolve, 1000))
     console.log('2. 点击打开元素')
 
 
 
     const info = await getSectionInfo(section)
-    console.log('3. 获取打开的信息', info)
-
-
     send({ type: "report", data: { index: section, value: info } })
-    console.log('4. 上报成功, 准备关闭')
+    console.log('3. 获取打开的信息上报', info)
 
 
-    send({ type: "moveMouse", data: { targetX: state.window.x + 10, targetY: window.innerHeight / 2, duration: 100 } })
-    send({ type: "clickMouse", data: { button: 'left', duration: 100 } })
-    // send({ type: "keyTap", data: 'escape' })
-    await new Promise(resolve => setTimeout(resolve, 200))
-    console.log('5. 已关闭弹窗')
+    send({ type: "keyTap", data: 'escape' })
+
+    await new Promise(resolve => setTimeout(resolve, 1000))
 
 
   } catch (error) {
@@ -256,14 +281,18 @@ async function runSectionAction(section) {
 // 开始任务
 async function start() {
   state.sections = getSections();
+
+  // state.sections = {1: state.sections[1]}
+
   for (const index in state.sections) {
+
     // 如果点停止了则结束循环
     if (state.stoped) {
-      console.log('停止任务')
+      console.log('停止任务!!!')
       break
     };
 
-    // 滚动后会重新获取所有的卡片, 如果是处理过的直接跳过
+    // 如果是处理过的直接跳过
     if (state.checked.includes(index)) {
       console.log('处理过了')
       continue
@@ -273,11 +302,11 @@ async function start() {
     // 是否在可视窗口, 不在则向下滚动300然后重新开始执行
     const el = $(`#exploreFeeds > section[data-index="${index}"]`)
 
-    if (!isElementFullyVisible(el)) {
-      send({ type: "scrollMouse", data: { x: 0, y: -300, duration: 100 } })
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      start();
-      break;
+    if (el && !isElementFullyVisible(el)) {
+
+      send({ type: "scrollMouse", data: { x: 0, y: -250, duration: 2000 } })
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      state.nextSections = getSections();
     }
 
 
@@ -285,7 +314,20 @@ async function start() {
     await new Promise(resolve => setTimeout(resolve, 3000))
     state.checked.push(index)
   }
-  state.stoped = true
+
+
+  // 上次的任务执行完成后检查下nextSections有没有添加新的进来 有的话继续执行
+  // 没有了就任务结束
+  if (Object.keys(state.nextSections).length) {
+    state.sections = { ...state.sections, ...state.nextSections }
+    state.nextSections = {}
+    createToast({ text: '有新的数据待处理' })
+    start();
+  } else {
+    createToast({ text: '没有数据了, 任务结束' })
+    state.stoped = true
+  }
+
 }
 
 
@@ -311,69 +353,68 @@ async function start() {
 window.addEventListener('load', () => {
 
 
+  createToast({ text: '初始化成功' });
+
+  // 创建部分自定义样式
+  createResetStyles();
+
+
   // 按钮触发任务
   state.start_button = createFloatingButton({ text: '开始', left: '100px' });
   state.start_button.addEventListener('click', () => {
     state.stoped = !state.stoped
   });
 
-
-  // 创建部分自定义样式
-  createResetStyles();
-
-
-  // 监听任务状态
-  watch(state, 'stoped', (v) => {
-    state.start_button.innerText = v ? '开始' : '暂停'
-    if (!v) {
-      start();
-      state.mask = createTaskStatusMask();
-    } else {
-      state.mask && state.mask.remove();
-    }
-  })
-
-
-  // 监听窗口数据变化重新获取所有card信息
-  watch(state, 'window', () => {
-    state.sections = getSections();
-  })
+});
 
 
 
-  // 快速移动鼠标停止机器人任务
-  window.addEventListener('mousemove', (event) => {
-    if (state.stoped) return
-    const currentTime = Date.now();
-    const deltaTime = currentTime - lastTime;
-    const deltaX = event.clientX - lastX;
-    const deltaY = event.clientY - lastY;
-    const velocity = Math.sqrt(deltaX * deltaX + deltaY * deltaY) / deltaTime;
-
-    if (velocity > 2) {
-      shakeCount++;
-      if (shakeCount >= 5) {
-        state.stoped = true;
-        shakeCount = 0;
-      }
-    } else {
-      shakeCount = Math.max(0, shakeCount - 1);
-    }
-
-    lastX = event.clientX;
-    lastY = event.clientY;
-    lastTime = currentTime;
-  });
+// 监听任务状态
+watch(state, 'stoped', (v) => {
+  state.start_button.innerText = v ? '开始' : '暂停'
+  if (!v) {
+    start();
+    state.mask = createTaskStatusMask();
+  } else {
+    state.mask && state.mask.remove();
+  }
+})
 
 
 
+// 快速移动鼠标停止机器人任务
+window.addEventListener('mousemove', (event) => {
+  if (state.stoped) return
+  const currentTime = Date.now();
+  const deltaTime = currentTime - lastTime;
+  const deltaX = event.clientX - lastX;
+  const deltaY = event.clientY - lastY;
+  const velocity = Math.sqrt(deltaX * deltaX + deltaY * deltaY) / deltaTime;
 
-  // 鼠标右键摁下停止任务
-  window.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    if (!state.stoped) {
+  if (velocity > 2) {
+    shakeCount++;
+    if (shakeCount >= 5) {
+      createToast({ text: '检测到快速移动鼠标停止任务' });
       state.stoped = true;
+      shakeCount = 0;
     }
-  });
+  } else {
+    shakeCount = Math.max(0, shakeCount - 1);
+  }
 
+  lastX = event.clientX;
+  lastY = event.clientY;
+  lastTime = currentTime;
+});
+
+
+
+
+// 鼠标右键摁下停止任务
+window.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (!state.stoped) {
+    createToast({ text: '检测到右键停止任务' });
+    state.stoped = true;
+  }
 });
