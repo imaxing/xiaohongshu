@@ -198,7 +198,7 @@ async function runSectionAction(section) {
     console.log('3. 获取打开的信息', info)
 
 
-    send({ type: "report", data: { section: section, value: info } })
+    send({ type: "report", data: { index: section, value: info } })
     console.log('4. 上报成功, 准备关闭')
     
 
