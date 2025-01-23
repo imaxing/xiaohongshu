@@ -283,10 +283,10 @@ async function runSectionAction(section) {
 async function start() {
   state.sections = getSections();
 
-  state.sections = {
-    0: state.sections[0],
-    1: state.sections[1],
-  }
+  // state.sections = {
+  //   0: state.sections[0],
+  //   1: state.sections[1],
+  // }
 
   for (const index in state.sections) {
 
