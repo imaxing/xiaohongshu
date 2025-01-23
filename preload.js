@@ -1,16 +1,24 @@
 const { ipcRenderer } = require("electron");
 
 const state = {
-  sections: [],
-  checked: [],
-  stoped: true,
-  window: { x: 0, y: 0, width: 0, height: 0 }
+  sections: [], // 所有卡片数据
+  checked: [], // 处理过的卡片 data-index
+  stoped: true, // 是否停止状态
+  mask: null, // 全屏的提示蒙层
+  start_button: null,
+  window: { x: 0, y: 0, width: 0, height: 0 } // 应用窗口信息
 }
+
+// 手动停止任务状态
+let lastX = 0;
+let lastY = 0;
+let lastTime = Date.now();
+let shakeCount = 0;
 
 
 // 监听窗口大小位置变动
 ipcRenderer.on("window-info", (_, info) => {
-  state.window = info
+  state.window = info;
 });
 
 
@@ -39,7 +47,7 @@ function $(selector) {
 }
 
 // 创建覆盖的样式
-function showSectionIndex() {
+function createSectionIndex() {
   const style = document.createElement('style');
   style.textContent = `
     #exploreFeeds > section::after {
@@ -61,9 +69,7 @@ function showSectionIndex() {
     #noteContainer {
       transition: none !important;
     }
-    .note-detail-mask {
-      z-index: -1;
-    }
+    
   `;
   document.head.appendChild(style);
 }
@@ -77,13 +83,12 @@ function getSections() {
   );
 }
 
+// 在卡片封面上创建一个位置标记测试鼠标移动的坐标准不准
 function createCoverCenterInfo(position) {
   const span = document.createElement('span')
   span.style.position = 'fixed',
     span.style.left = position.x + 'px'
   span.style.top = position.y + 'px'
-  // span.style.width = '4px'
-  // span.style.height = '4px'
   span.style.background = '#f40f40'
   span.style.color = '#fff'
   span.style.borderRadius = 4
@@ -92,13 +97,20 @@ function createCoverCenterInfo(position) {
 }
 
 // 获取指定section的位置
-function getSectionPosition(index) {
-  const section = $(
-    `#exploreFeeds > section[data-index="${index}"] a.cover`
-  );
+function getElementPosition(selector) {
+  const section = $(selector);
+  if (!section) {
+    throw new Error('未找到目标元素')
+  }
   const rect = section.getBoundingClientRect();
   const x = rect.left + (rect.width / 2)
   const y = rect.top + (rect.height / 2)
+
+  const point = createCoverCenterInfo({ x, y })
+  point.innerText = `${x}/${y}`
+  point.style.transform = 'translate(-50%, -50%)'
+  document.body.appendChild(point)
+
   return { x, y };
 }
 
@@ -108,9 +120,9 @@ function createFloatingButton(options) {
   button.textContent = options.text;
   button.style.cssText = `
     position: fixed;
-    bottom: 40px;
-    right: ${options.right};
-    z-index: 9999;
+    bottom: 80px;
+    left: ${options.left};
+    z-index: 99999999;
     padding: 8px 16px;
     background: #1890ff;
     color: white;
@@ -122,6 +134,29 @@ function createFloatingButton(options) {
   document.body.appendChild(button);
 
   return button
+}
+
+function createTaskStatusMask() {
+  const mask = document.createElement('div');
+  mask.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: #fff;
+  `;
+  mask.textContent = '处理中...';
+  document.body.appendChild(mask);
+
+  return mask;
 }
 
 // 判断当前卡片是否在可视窗口内
@@ -154,7 +189,6 @@ function getSectionInfo() {
         const title = $('.note-content #detail-title') || {}
         const desc = $('.note-content #detail-desc') || {}
         const medias = $('.media-container') ? $('.media-container').querySelectorAll('.swiper-slide .img-container img') : []
-        console.log($('.media-container'), '====medias')
         resolve({
           title: title.innerText,
           desc: desc.innerText,
@@ -169,19 +203,14 @@ function getSectionInfo() {
 
 }
 
-
-
 // 任务详情
 async function runSectionAction(section) {
   try {
 
-    const position = getSectionPosition(section)
-    const point = createCoverCenterInfo(position)
-    point.innerText = `${position.x}/${position.y}`
-    document.body.appendChild(point)
+    const position = getElementPosition(`#exploreFeeds > section[data-index="${section}"] a.cover`)
+
     position.x += state.window.x
     position.y -= state.window.y
-
 
     send({ type: "moveMouse", data: { targetX: position.x, targetY: position.y, duration: 100 } })
     await new Promise(resolve => setTimeout(resolve, 100))
@@ -191,7 +220,7 @@ async function runSectionAction(section) {
     send({ type: "clickMouse", data: { button: 'left', duration: 100 } })
     await new Promise(resolve => setTimeout(resolve, 2100))
     console.log('2. 点击打开元素')
-    point.remove();
+
 
 
     const info = await getSectionInfo(section)
@@ -200,11 +229,14 @@ async function runSectionAction(section) {
 
     send({ type: "report", data: { index: section, value: info } })
     console.log('4. 上报成功, 准备关闭')
-    
 
 
-    send({ type: "keyTap", data: 'escape' })
-    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    send({ type: "moveMouse", data: { targetX: state.window.x + 10, targetY: window.innerHeight / 2, duration: 100 } })
+    send({ type: "clickMouse", data: { button: 'left', duration: 100 } })
+    // send({ type: "keyTap", data: 'escape' })
+    await new Promise(resolve => setTimeout(resolve, 1500))
     console.log('5. 已关闭弹窗')
 
 
@@ -227,7 +259,7 @@ async function start() {
     // 滚动后会重新获取所有的卡片, 如果是处理过的直接跳过
     if (state.checked.includes(index)) {
       console.log('处理过了')
-      continue
+      // continue
     }
 
 
@@ -237,7 +269,7 @@ async function start() {
     if (!isElementFullyVisible(el)) {
       send({ type: "scrollMouse", data: { x: 0, y: -300, duration: 100 } })
       await new Promise(resolve => setTimeout(resolve, 3000))
-      run();
+      start();
       break;
     }
 
@@ -264,12 +296,16 @@ v2
 x,y要加上窗口位置判断
 鼠标速度移动快一些
 图片也要抓一下
+
+v3
+增加全屏蒙层提示任务状态
+拦截请求
 */
 window.addEventListener('load', () => {
 
 
-  const startButton = createFloatingButton({ text: '开始', right: '100px' });
-  startButton.addEventListener('click', () => {
+  state.start_button = createFloatingButton({ text: '开始', left: '100px' });
+  state.start_button.addEventListener('click', () => {
 
     state.stoped = !state.stoped
 
@@ -277,13 +313,20 @@ window.addEventListener('load', () => {
 
 
 
-  showSectionIndex();
+  createSectionIndex();
+
+
 
 
   // 监听任务状态
   watch(state, 'stoped', (v) => {
-    startButton.innerText = v ? '开始' : '暂停'
-    !v && start();
+    state.start_button.innerText = v ? '开始' : '暂停'
+    if (!v) {
+      start();
+      state.mask = createTaskStatusMask();
+    } else {
+      state.mask && state.mask.remove();
+    }
   })
 
 
@@ -292,5 +335,43 @@ window.addEventListener('load', () => {
     state.sections = getSections();
   })
 
+
+
+
+
+  // 快速移动鼠标停止机器人任务
+  window.addEventListener('mousemove', (event) => {
+    if (state.stoped) return
+    const currentTime = Date.now();
+    const deltaTime = currentTime - lastTime;
+    const deltaX = event.clientX - lastX;
+    const deltaY = event.clientY - lastY;
+    const velocity = Math.sqrt(deltaX * deltaX + deltaY * deltaY) / deltaTime;
+
+    if (velocity > 2) {
+      shakeCount++;
+      if (shakeCount >= 5) {
+        state.stoped = true;
+        shakeCount = 0;
+      }
+    } else {
+      shakeCount = Math.max(0, shakeCount - 1);
+    }
+
+    lastX = event.clientX;
+    lastY = event.clientY;
+    lastTime = currentTime;
+  });
+
+
+
+
+  // 鼠标右键摁下停止任务
+  window.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (!state.stoped) {
+      state.stoped = true;
+    }
+  });
 
 });
