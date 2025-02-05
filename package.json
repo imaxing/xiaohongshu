@@ -1,5 +1,5 @@
 {
-  "name": "xiaohongshu",
+  "name": "XiaoHongShu",
   "version": "1.0.0",
   "main": "main.js",
   "scripts": {
@@ -10,5 +10,13 @@
   },
   "dependencies": {
     "@jitsi/robotjs": "^0.6.13"
+  },
+  "build": {
+    "mac": {
+      "icon": "assets/icon.png"
+    },
+    "win": {
+      "icon": "assets/icon.ico"
+    }
   }
 }
