@@ -1,5 +1,5 @@
 // Modules to control application life and create native browser window
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("node:path");
 const _robot = require("@jitsi/robotjs");
 const { RobotEventIpc } = require("./robot");
@@ -18,6 +18,23 @@ const events = {
     results[d.index] = d.value
     console.log('results:')
     console.log(results)
+  },
+  download_results() {
+    dialog.showSaveDialog({
+      title: '保存数据',
+      defaultPath: path.join(app.getPath('downloads'), 'data.json'),
+      filters: [{ name: 'JSON文件', extensions: ['json'] }]
+    }).then(result => {
+      if (!result.canceled) {
+        try {
+          const fs = require('node:fs');
+          fs.writeFileSync(result.filePath, JSON.stringify(results, null, 2));
+          console.log('数据已保存到:', result.filePath);
+        } catch (err) {
+          console.error('保存数据失败:', err);
+        }
+      }
+    });
   }
 };
 

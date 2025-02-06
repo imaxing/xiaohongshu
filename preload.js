@@ -7,6 +7,7 @@ const state = {
   stoped: true, // 是否停止状态
   mask: null, // 全屏的提示蒙层
   start_button: null,
+  download_button: null,
   toasts: [],
   window_updating: false,
   window: { x: 0, y: 0, width: 0, height: 0 }, // 应用窗口信息
@@ -357,9 +358,15 @@ window.addEventListener("load", () => {
   createResetStyles();
 
   // 按钮触发任务
-  state.start_button = createFloatingButton({ text: "开始", left: "100px" });
+  state.start_button = createFloatingButton({ text: "开始", left: "120px" });
   state.start_button.addEventListener("click", () => {
     state.stoped = !state.stoped;
+  });
+
+  // 按钮下载数据
+  state.download_button = createFloatingButton({ text: "下载数据", left: "20px" });
+  state.download_button.addEventListener("click", () => {
+    send({ type: "download_results", data: {} });
   });
 });
 
