@@ -9,7 +9,11 @@
     "electron": "^34.0.0"
   },
   "dependencies": {
-    "@jitsi/robotjs": "^0.6.13"
+    "@jitsi/robotjs": "^0.6.13",
+    "puppeteer": "^24.2.0",
+    "puppeteer-core": "^24.2.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "build": {
     "mac": {
