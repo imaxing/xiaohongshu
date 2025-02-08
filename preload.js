@@ -366,7 +366,7 @@ window.addEventListener("load", () => {
   // 按钮下载数据
   state.download_button = createFloatingButton({ text: "下载数据", left: "20px" });
   state.download_button.addEventListener("click", () => {
-    send({ type: "download_results", data: {} });
+    send({ type: "save_results", data: {} });
   });
 });
 
