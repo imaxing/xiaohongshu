@@ -13,7 +13,7 @@ const state = {
     steps: 30,
     maxOffset: 10,
     highlightStyle: 'box-shadow: 0 0 0 2px red !important; border: 2px solid red !important; transition: all 0.1s ease-in-out;',
-    highlightDuration: 2000
+    highlightDuration: 1000
   },
   window: {
     width: 1500,
@@ -29,6 +29,44 @@ class MouseController {
     this.page = page;
     this.currentX = 0;
     this.currentY = 0;
+    // 初始化时注入样式
+    this.initializeStyles();
+  }
+
+  async initializeStyles() {
+    try {
+      await this.page.evaluate(() => {
+        // 如果已存在样式标签则移除
+        const existingStyle = document.getElementById('mouse-tracker-style');
+        if (existingStyle) {
+          existingStyle.remove();
+        }
+
+        // 创建新的样式标签
+        const style = document.createElement('style');
+        style.id = 'mouse-tracker-style';
+        style.textContent = `
+          .mouse-highlight {
+            box-shadow: 0 0 0 2px red !important;
+            border: 2px solid red !important;
+            transition: all 0.3s ease-in-out !important;
+          }
+          .mouse-tracker-point {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: rgba(255, 0, 0, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 999999;
+            transition: opacity 0.3s ease-out;
+          }
+        `;
+        document.head.appendChild(style);
+      });
+    } catch (error) {
+      console.error('初始化样式失败:', error);
+    }
   }
 
   generateControlPoints(start, end) {
@@ -54,48 +92,35 @@ class MouseController {
 
   async highlightElement(x, y) {
     try {
-      await this.page.evaluate(({ x, y, style, duration }) => {
+      await this.page.evaluate(({ x, y, duration }) => {
         const element = document.elementFromPoint(x, y);
         if (element) {
-          // 为每个元素添加唯一标识
+          // 创建唯一标识
           const timestamp = Date.now();
           const highlightId = `highlight-${timestamp}`;
+          
+          // 添加高亮类
+          element.classList.add('mouse-highlight');
           element.setAttribute('data-highlight-id', highlightId);
-          
-          // 保存原始样式
-          const originalStyle = element.getAttribute('style') || '';
-          
-          // 添加高亮样式
-          element.style.cssText = `${originalStyle}; ${style}`;
           
           // 创建轨迹点
           const feedback = document.createElement('div');
           feedback.id = `feedback-${timestamp}`;
-          feedback.style.cssText = `
-            position: absolute;
-            left: ${x - 5}px;
-            top: ${y - 5}px;
-            width: 10px;
-            height: 10px;
-            background: rgba(255, 0, 0, 0.5);
-            border-radius: 50%;
-            pointer-events: none;
-            z-index: 999999;
-            transition: opacity 0.3s ease-out;
-          `;
+          feedback.className = 'mouse-tracker-point';
+          feedback.style.left = `${x - 5}px`;
+          feedback.style.top = `${y - 5}px`;
           document.body.appendChild(feedback);
           
           // 延迟清理
           setTimeout(() => {
-            // 获取元素并检查是否仍然存在相同的标识
+            // 清理高亮
             const targetElement = document.querySelector(`[data-highlight-id="${highlightId}"]`);
             if (targetElement) {
-              // 移除高亮样式
-              targetElement.style.cssText = originalStyle;
+              targetElement.classList.remove('mouse-highlight');
               targetElement.removeAttribute('data-highlight-id');
             }
             
-            // 移除轨迹点
+            // 清理轨迹点
             const feedbackElement = document.getElementById(`feedback-${timestamp}`);
             if (feedbackElement) {
               feedbackElement.style.opacity = '0';
@@ -106,7 +131,6 @@ class MouseController {
       }, { 
         x, 
         y, 
-        style: state.mouse.highlightStyle, 
         duration: state.mouse.highlightDuration 
       });
     } catch (error) {
