@@ -57,15 +57,20 @@ class MouseController {
       await this.page.evaluate(({ x, y, style, duration }) => {
         const element = document.elementFromPoint(x, y);
         if (element) {
+          // 为每个元素添加唯一标识
+          const timestamp = Date.now();
+          const highlightId = `highlight-${timestamp}`;
+          element.setAttribute('data-highlight-id', highlightId);
+          
           // 保存原始样式
-          const originalBoxShadow = element.style.boxShadow;
-          const originalBorder = element.style.border;
+          const originalStyle = element.getAttribute('style') || '';
           
           // 添加高亮样式
-          element.style.cssText += style;
+          element.style.cssText = `${originalStyle}; ${style}`;
           
-          // 创建一个视觉反馈元素
+          // 创建轨迹点
           const feedback = document.createElement('div');
+          feedback.id = `feedback-${timestamp}`;
           feedback.style.cssText = `
             position: absolute;
             left: ${x - 5}px;
@@ -76,17 +81,34 @@ class MouseController {
             border-radius: 50%;
             pointer-events: none;
             z-index: 999999;
+            transition: opacity 0.3s ease-out;
           `;
           document.body.appendChild(feedback);
           
-          // 恢复原始样式并移除反馈元素
+          // 延迟清理
           setTimeout(() => {
-            element.style.boxShadow = originalBoxShadow;
-            element.style.border = originalBorder;
-            feedback.remove();
+            // 获取元素并检查是否仍然存在相同的标识
+            const targetElement = document.querySelector(`[data-highlight-id="${highlightId}"]`);
+            if (targetElement) {
+              // 移除高亮样式
+              targetElement.style.cssText = originalStyle;
+              targetElement.removeAttribute('data-highlight-id');
+            }
+            
+            // 移除轨迹点
+            const feedbackElement = document.getElementById(`feedback-${timestamp}`);
+            if (feedbackElement) {
+              feedbackElement.style.opacity = '0';
+              setTimeout(() => feedbackElement.remove(), 300);
+            }
           }, duration);
         }
-      }, { x, y, style: state.mouse.highlightStyle, duration: state.mouse.highlightDuration });
+      }, { 
+        x, 
+        y, 
+        style: state.mouse.highlightStyle, 
+        duration: state.mouse.highlightDuration 
+      });
     } catch (error) {
       console.error('高亮元素失败:', error);
     }
@@ -223,9 +245,9 @@ class PuppeteerController {
       console.debug('开始测试鼠标移动...');
 
       // 先移动到固定坐标测试
-      console.debug('测试移动到固定坐标 (100, 100)');
-      await this.mouseController.moveMouseSmooth(100, 100);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // console.debug('测试移动到固定坐标 (100, 100)');
+      // await this.mouseController.moveMouseSmooth(100, 100);
+      // await new Promise(resolve => setTimeout(resolve, 1000));
 
       // 然后尝试获取元素
       const selector = '#exploreFeeds > section[data-index="0"] a.cover';
