@@ -23,10 +23,12 @@ const state = {
   }
 };
 
-// 鼠标移动控制器
+// 鼠标控制器
 class MouseController {
   constructor(page) {
     this.page = page;
+    this.currentX = 0;
+    this.currentY = 0;
   }
 
   generateControlPoints(start, end) {
@@ -50,46 +52,61 @@ class MouseController {
     return { x, y };
   }
 
-  async highlightElement(x, y) {
-    await this.page.evaluate(({ x, y, style, duration }) => {
-      const element = document.elementFromPoint(x, y);
-      if (element) {
-        const originalStyle = element.style.boxShadow;
-        element.style.boxShadow = style;
-        setTimeout(() => {
-          element.style.boxShadow = originalStyle;
-        }, duration);
-      }
-    }, { 
-      x, 
-      y, 
-      style: state.mouse.highlightStyle, 
-      duration: state.mouse.highlightDuration 
-    });
-  }
-
   async moveMouseSmooth(targetX, targetY) {
-    const start = await this.page.mouse.position();
-    const end = { x: targetX, y: targetY };
-    const control = this.generateControlPoints(start, end);
-    
-    console.debug(`开始移动鼠标: 从 (${start.x}, ${start.y}) 到 (${end.x}, ${end.y})`);
+    try {
+      console.debug(`开始移动鼠标: 从 (${this.currentX}, ${this.currentY}) 到 (${targetX}, ${targetY})`);
 
-    for (let i = 0; i <= state.mouse.steps; i++) {
-      const t = i / state.mouse.steps;
-      const point = this.calculateBezierPoint(t, start, control, end);
-      
-      const easing = Math.sin((t * Math.PI) / 2);
-      const delay = state.mouse.baseSpeed * (1 - easing);
-      
-      await this.page.mouse.move(point.x, point.y);
-      await this.highlightElement(point.x, point.y);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      
-      console.debug(`移动进度: ${Math.round(t * 100)}%, 位置: (${Math.round(point.x)}, ${Math.round(point.y)})`);
+      const start = { x: this.currentX, y: this.currentY };
+      const end = { x: targetX, y: targetY };
+      const control = this.generateControlPoints(start, end);
+
+      for (let i = 0; i <= state.mouse.steps; i++) {
+        const t = i / state.mouse.steps;
+        const point = this.calculateBezierPoint(t, start, control, end);
+        
+        // 添加缓动效果
+        const easing = Math.sin((t * Math.PI) / 2);
+        const delay = state.mouse.baseSpeed * (1 - easing);
+        
+        // 移动鼠标
+        await this.page.mouse.move(
+          Math.round(point.x), 
+          Math.round(point.y)
+        );
+
+        // 更新当前位置
+        this.currentX = point.x;
+        this.currentY = point.y;
+
+        // 高亮经过的元素
+        await this.page.evaluate(({ x, y, style, duration }) => {
+          const element = document.elementFromPoint(x, y);
+          if (element) {
+            const originalStyle = element.style.boxShadow;
+            element.style.boxShadow = style;
+            setTimeout(() => {
+              element.style.boxShadow = originalStyle;
+            }, duration);
+          }
+        }, { 
+          x: Math.round(point.x), 
+          y: Math.round(point.y), 
+          style: state.mouse.highlightStyle, 
+          duration: state.mouse.highlightDuration 
+        });
+
+        // 等待延迟
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        console.debug(`移动进度: ${Math.round(t * 100)}%, 位置: (${Math.round(point.x)}, ${Math.round(point.y)})`);
+      }
+
+      console.debug('鼠标移动完成');
+      return true;
+    } catch (error) {
+      console.error('移动鼠标失败:', error);
+      return false;
     }
-
-    console.debug('鼠标移动完成');
   }
 }
 
@@ -122,42 +139,97 @@ class PuppeteerController {
 
       console.debug('Puppeteer 连接成功');
 
-      // 等待并获取页面
-      let retries = 0;
-      while (retries < 5) {
-        const pages = await this.browser.pages();
-        console.debug(`尝试获取页面 (${retries + 1}/5), 当前页面数: ${pages.length}`);
-        
-        if (pages.length > 0) {
-          this.page = pages[0];
-          break;
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        retries++;
-      }
+      // 获取所有目标
+      const targets = await this.browser.targets();
+      console.debug('当前所有目标:', targets.map(t => ({
+        type: t.type(),
+        url: t.url(),
+        id: t._targetId
+      })));
 
+      // 找到目标页面
+      const target = targets.find(t => t.type() === 'page' && t.url().includes('xiaohongshu.com'));
+      if (!target) {
+        throw new Error('未找到目标页面');
+      }
+      console.debug('找到目标页面:', target.url());
+
+      // 获取页面
+      this.page = await target.page();
       if (!this.page) {
         throw new Error('未能获取页面实例');
       }
-
-      // 等待页面加载完成
-      await this.page.waitForNavigation({ 
-        waitUntil: 'networkidle0',
-        timeout: 30000 
-      });
-      
-      console.debug('成功获取并确认页面实例');
+      console.debug('成功获取页面实例');
 
       // 设置用户代理
       await this.page.setUserAgent(state.ua);
+      console.debug('用户代理设置完成');
+
+      // 等待页面内容加载
+      try {
+        console.debug('等待页面内容加载...');
+        await this.page.waitForSelector('#exploreFeeds', { 
+          timeout: 10000,
+          visible: true 
+        });
+        console.debug('页面内容已加载');
+      } catch (error) {
+        console.warn('等待页面内容超时:', error);
+      }
 
       // 初始化鼠标控制器
       this.mouseController = new MouseController(this.page);
+      console.debug('鼠标控制器初始化完成');
+
+      // 执行测试
+      console.debug('准备执行鼠标移动测试');
+      await this.testMouseMovement();
 
       return true;
     } catch (error) {
       console.error('Puppeteer 初始化失败:', error);
+      console.error('错误详情:', error.stack);
+      return false;
+    }
+  }
+
+  async testMouseMovement() {
+    try {
+      console.debug('开始测试鼠标移动...');
+
+      // 先移动到固定坐标测试
+      console.debug('测试移动到固定坐标 (100, 100)');
+      await this.mouseController.moveMouseSmooth(100, 100);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 然后尝试获取元素
+      const selector = '#exploreFeeds > section[data-index="0"] a.cover';
+      console.debug('等待目标元素:', selector);
+      
+      const element = await this.page.waitForSelector(selector, { 
+        timeout: 10000,
+        visible: true 
+      });
+      
+      if (!element) {
+        throw new Error('未找到目标元素');
+      }
+
+      const box = await element.boundingBox();
+      console.debug('目标元素位置:', box);
+
+      // 移动到元素中心点
+      const targetX = box.x + box.width / 2;
+      const targetY = box.y + box.height / 2;
+      
+      console.debug(`准备移动到元素中心: (${targetX}, ${targetY})`);
+      await this.mouseController.moveMouseSmooth(targetX, targetY);
+      console.debug('移动完成');
+
+      return true;
+    } catch (error) {
+      console.error('鼠标移动测试失败:', error);
+      console.error('错误详情:', error.stack);
       return false;
     }
   }
@@ -252,6 +324,10 @@ class MainController {
       // 设置 IPC 监听
       this.setupIPC();
 
+      // 添加测试代码
+      console.debug('开始执行鼠标移动测试');
+      await this.puppeteerController.testMouseMovement();
+
       return true;
     } catch (error) {
       console.error('初始化失败:', error);
@@ -259,13 +335,19 @@ class MainController {
     }
   }
 
+  // 添加更多的测试命令
   setupIPC() {
-    ipcMain.handle('move-mouse', async (event, { x, y }) => {
+    ipcMain.handle('test-mouse-move', async () => {
+      return await this.puppeteerController.testMouseMovement();
+    });
+
+    // 添加移动到指定坐标的命令
+    ipcMain.handle('move-to-coordinate', async (event, { x, y }) => {
       try {
         await this.puppeteerController.mouseController.moveMouseSmooth(x, y);
         return true;
       } catch (error) {
-        console.error('鼠标移动失败:', error);
+        console.error('移动到指定坐标失败:', error);
         return false;
       }
     });
