@@ -12,7 +12,7 @@ const state = {
     baseSpeed: 100,
     steps: 30,
     maxOffset: 10,
-    highlightStyle: 'box-shadow: 0 0 0 1px red',
+    highlightStyle: 'box-shadow: 0 0 0 2px red !important; border: 2px solid red !important; transition: all 0.1s ease-in-out;',
     highlightDuration: 2000
   },
   window: {
@@ -52,6 +52,46 @@ class MouseController {
     return { x, y };
   }
 
+  async highlightElement(x, y) {
+    try {
+      await this.page.evaluate(({ x, y, style, duration }) => {
+        const element = document.elementFromPoint(x, y);
+        if (element) {
+          // 保存原始样式
+          const originalBoxShadow = element.style.boxShadow;
+          const originalBorder = element.style.border;
+          
+          // 添加高亮样式
+          element.style.cssText += style;
+          
+          // 创建一个视觉反馈元素
+          const feedback = document.createElement('div');
+          feedback.style.cssText = `
+            position: absolute;
+            left: ${x - 5}px;
+            top: ${y - 5}px;
+            width: 10px;
+            height: 10px;
+            background: rgba(255, 0, 0, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 999999;
+          `;
+          document.body.appendChild(feedback);
+          
+          // 恢复原始样式并移除反馈元素
+          setTimeout(() => {
+            element.style.boxShadow = originalBoxShadow;
+            element.style.border = originalBorder;
+            feedback.remove();
+          }, duration);
+        }
+      }, { x, y, style: state.mouse.highlightStyle, duration: state.mouse.highlightDuration });
+    } catch (error) {
+      console.error('高亮元素失败:', error);
+    }
+  }
+
   async moveMouseSmooth(targetX, targetY) {
     try {
       console.debug(`开始移动鼠标: 从 (${this.currentX}, ${this.currentY}) 到 (${targetX}, ${targetY})`);
@@ -69,36 +109,21 @@ class MouseController {
         const delay = state.mouse.baseSpeed * (1 - easing);
         
         // 移动鼠标
-        await this.page.mouse.move(
-          Math.round(point.x), 
-          Math.round(point.y)
-        );
+        const roundedX = Math.round(point.x);
+        const roundedY = Math.round(point.y);
+        await this.page.mouse.move(roundedX, roundedY);
 
         // 更新当前位置
-        this.currentX = point.x;
-        this.currentY = point.y;
+        this.currentX = roundedX;
+        this.currentY = roundedY;
 
         // 高亮经过的元素
-        await this.page.evaluate(({ x, y, style, duration }) => {
-          const element = document.elementFromPoint(x, y);
-          if (element) {
-            const originalStyle = element.style.boxShadow;
-            element.style.boxShadow = style;
-            setTimeout(() => {
-              element.style.boxShadow = originalStyle;
-            }, duration);
-          }
-        }, { 
-          x: Math.round(point.x), 
-          y: Math.round(point.y), 
-          style: state.mouse.highlightStyle, 
-          duration: state.mouse.highlightDuration 
-        });
+        await this.highlightElement(roundedX, roundedY);
 
         // 等待延迟
         await new Promise(resolve => setTimeout(resolve, delay));
         
-        console.debug(`移动进度: ${Math.round(t * 100)}%, 位置: (${Math.round(point.x)}, ${Math.round(point.y)})`);
+        console.debug(`移动进度: ${Math.round(t * 100)}%, 位置: (${roundedX}, ${roundedY})`);
       }
 
       console.debug('鼠标移动完成');
